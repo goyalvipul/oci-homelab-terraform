@@ -15,6 +15,13 @@ The main goal for this project is an ultimate self hosted homelab setup with sit
 [Cloudflare WARP-to-WARP][w2w] using vanilla Wireguard with [warp.sh][wsh]. \
 At least it's what I did 😉
 
+- LTS OS
+- SSH-only access
+- Private-only networking
+- One-way initiated tunnel
+- Zero inbound attack surface
+-- This is enterprise-grade design, not homelab cosplay.
+
 ## usage
 
 ### oci
