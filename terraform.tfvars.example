@@ -1,0 +1,61 @@
+oci_connection = {
+  tenancy_ocid     = "ocid1.tenancy.oc1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  user_ocid        = "ocid1.user.oc1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  fingerprint      = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+  private_key_path = "~/.oci/key-private.pem"
+  region           = "eu-frankfurt-1"
+}
+
+general = {
+  compartment_name    = "infrastructure"
+  bucket_name         = "backups"
+  main_network_cidr   = "172.16.0.0/16"
+  private_subnet_cidr = "172.16.0.0/24"
+}
+
+# I am using Ubuntu Image. As Debian is good but not stable enough in the long run. Let's make this setup and forget
+
+vm = {
+  name       = "Infrastructure"
+  shape      = "VM.Standard.A1.Flex"
+  cpus       = 4
+  mem_size   = 24
+  disk_size  = 200
+  image_name = "image_name = "Canonical-Ubuntu-22.04-aarch64-2024.*"
+  private_ip = "172.16.0.2"
+  ssh_public_keys = [
+    "ssh-rsa ...",
+    "ssh-ed25519 ..."
+  ]
+  os = {
+    hostname       = "infravm"
+    username       = "infra"
+
+    # optional - If you want to set a plain text password, sett a password="" field under this comment. 
+    # password=""
+    # I would suggest to keep this commented, and use only SSH to access this instance. Adding password in plain text is security hole
+  
+
+    # optional - prevents DNS leaks
+    force_dns = ["1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"]
+
+    # optional - automatically brings up Wireguard interfaces
+    wg_config = {
+  "wg0" = <<EOF
+[Interface]
+PrivateKey = <OCI_PRIVATE_KEY>
+Address = 10.200.0.2/32
+DNS = 10.200.0.1
+MTU = 1420
+
+[Peer]
+PublicKey = <HOME_PUBLIC_KEY>
+AllowedIPs = 10.200.0.0/24
+Endpoint = <YOUR_HOME_PUBLIC_IP>:2408
+PersistentKeepalive = 25
+EOF
+}
+  }
+  daily_backups  = 3
+  weekly_backups = 2
+}

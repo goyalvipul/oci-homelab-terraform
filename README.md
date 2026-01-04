@@ -1,7 +1,7 @@
 # oci-homelab-terraform
 these are terraform scripts which you can use to setup your Oracle Cloud Interface - it will provision the best machine for you in the Free Tier
 
-# oci-homelab
+# oci-homelab-terraform
 
 Oracle Cloud Infrastructure (OCI) has a generous free option for ARM64 based instances - 4 CPUs with 24 GB memory (and
 more - for details see [Always Free Resources][afr] docs).
@@ -44,8 +44,8 @@ the [docs][imp].
 
 1. Clone the repository and prepare configuration file:
     ```sh
-    git clone https://github.com/b0ch3nski/oci-homelab.git
-    cd oci-homelab
+    git clone https://github.com/goyalvipul/oci-homelab-terraform.git
+    cd oci-homelab-terraform
     cp terraform.tfvars.example terraform.tfvars
     ```
 
