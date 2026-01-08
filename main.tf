@@ -34,18 +34,29 @@ resource "oci_core_vcn" "main" {
 
 resource "oci_core_default_security_list" "only_egress" {
   manage_default_resource_id = oci_core_vcn.main.default_security_list_id
-  display_name               = "Only Egress Traffic"
+  display_name               = "Main Security List"
   egress_security_rules {
     destination = "0.0.0.0/0"
     protocol    = "all"
     description = "Allow all Egress traffic"
   }
+  
+  ingress_security_rules {
+    protocol    = "17" # UDP
+    source      = "0.0.0.0/0"
+    description = "WireGuard"
+    udp_options {
+      min = 51820
+      max = 51820
+    }
+  }
+
 }
 
 data "oci_core_services" "all" {
   filter {
     name   = "name"
-    values = ["All .* Services In Oracle Services Network"]
+    values = ["OCI .* Object Storage"]
     regex  = true
   }
 }
@@ -59,39 +70,30 @@ resource "oci_core_service_gateway" "service_gateway" {
   }
 }
 
-resource "oci_core_public_ip" "nat_gateway_public_ip" {
-  compartment_id = oci_identity_compartment.identity.id
-  display_name   = "NAT Gateway"
-  lifetime       = "RESERVED"
-}
 
-output "nat_gateway_public_ip" {
-  value = oci_core_public_ip.nat_gateway_public_ip.ip_address
-}
-
-resource "oci_core_nat_gateway" "nat_gateway" {
-  compartment_id = oci_identity_compartment.identity.id
-  display_name   = "NAT Gateway"
-  vcn_id         = oci_core_vcn.main.id
-  public_ip_id   = oci_core_public_ip.nat_gateway_public_ip.id
+output "vm_public_ip" {
+  value = oci_core_instance.infra_vm.public_ip
 }
 
 resource "oci_core_route_table" "private" {
   compartment_id = oci_identity_compartment.identity.id
-  display_name   = "Private Route Table"
+  display_name   = "Main Route Table"
   vcn_id         = oci_core_vcn.main.id
 
+  # Rule 1: Traffic to Oracle Services (Object Storage, etc.) stays on the Oracle Network
   route_rules {
     destination       = data.oci_core_services.all.services[0].cidr_block
     destination_type  = "SERVICE_CIDR_BLOCK"
     network_entity_id = oci_core_service_gateway.service_gateway.id
     description       = "OCI Services traffic through Service Gateway"
   }
+
+  # Rule 2: All other Internet traffic goes through the Internet Gateway (Allows VPN)
   route_rules {
     destination       = "0.0.0.0/0"
     destination_type  = "CIDR_BLOCK"
-    network_entity_id = oci_core_nat_gateway.nat_gateway.id
-    description       = "Internet traffic through NAT Gateway"
+    network_entity_id = oci_core_internet_gateway.igw.id
+    description       = "Internet traffic through Internet Gateway"
   }
 }
 
@@ -103,8 +105,8 @@ resource "oci_core_subnet" "private" {
   cidr_block     = var.general.private_subnet_cidr
   dns_label      = "prvsubnet"
 
-  prohibit_internet_ingress  = true
-  prohibit_public_ip_on_vnic = true
+  prohibit_internet_ingress  = false
+  prohibit_public_ip_on_vnic = false
 }
 
 resource "oci_identity_customer_secret_key" "s3_credentials" {
@@ -113,7 +115,7 @@ resource "oci_identity_customer_secret_key" "s3_credentials" {
 }
 
 data "oci_objectstorage_namespace" "s3_namespace" {
-  compartment_id = oci_identity_compartment.identity.id
+  compartment_id = var.oci_connection.tenancy_ocid
 }
 
 resource "oci_objectstorage_bucket" "s3_bucket" {
@@ -194,7 +196,7 @@ write_files:
 apt:
   sources:
     docker.list:
-      source: deb [arch=arm64] https://download.docker.com/linux/debian ${var.vm.os.debian_version} stable
+      source: deb [arch=arm64] https://download.docker.com/linux/ubuntu jammy stable
       keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
 
 package_update: true
@@ -212,15 +214,17 @@ users:
     groups:
       - sudo
       - docker
+    sudo: "ALL=(ALL)"
+    lock_passwd: false
+    # REPLACE THIS with your own generated hash: 
+    # python3 -c 'import crypt; print(crypt.crypt("YOUR_PASSWORD", crypt.mksalt(crypt.METHOD_SHA512)))'
+    passwd: <YOUR_GENERATED_PASSWORD_HASH> 
+
     shell: /bin/bash
     ssh_authorized_keys:
 %{for key in var.vm.ssh_public_keys~}
       - '${trimspace(key)}'
 %{endfor~}
-%{if var.vm.os.password != ""~}
-    plain_text_passwd: ${var.vm.os.password}
-    lock_passwd: false
-%{endif~}
 
 power_state:
   mode: reboot
@@ -231,14 +235,25 @@ output "cloud-config" {
   value = local.cloud_config
 }
 
-data "oci_core_images" "debian_image" {
+data "oci_core_images" "ubuntu_image" {
   compartment_id = var.oci_connection.tenancy_ocid
-  display_name   = var.vm.image_name
+  
+  operating_system = "Canonical Ubuntu"
+  shape = var.vm.shape
+
+  filter {
+    name   = "display_name"
+    values = ["^${var.vm.image_name}"]
+    regex  = true
+  }
+
+  sort_by    = "TIMECREATED"
+  sort_order = "DESC"
 }
 
 data "oci_identity_availability_domain" "ad" {
   compartment_id = var.oci_connection.tenancy_ocid
-  ad_number      = var.vm.availability_domain
+  ad_number = 1
 }
 
 resource "oci_core_instance" "infra_vm" {
@@ -253,7 +268,7 @@ resource "oci_core_instance" "infra_vm" {
     memory_in_gbs = var.vm.mem_size
   }
   source_details {
-    source_id               = data.oci_core_images.debian_image.images[0].id
+    source_id               = data.oci_core_images.ubuntu_image.images[0].id
     source_type             = "image"
     boot_volume_size_in_gbs = var.vm.disk_size
   }
@@ -267,7 +282,7 @@ resource "oci_core_instance" "infra_vm" {
     display_name     = "vnic0"
     hostname_label   = var.vm.os.hostname
     private_ip       = var.vm.private_ip
-    assign_public_ip = false
+    assign_public_ip = true
   }
   agent_config {
     is_management_disabled = true
@@ -308,4 +323,10 @@ resource "oci_core_volume_backup_policy" "backup" {
 resource "oci_core_volume_backup_policy_assignment" "backup" {
   asset_id  = oci_core_instance.infra_vm.boot_volume_id
   policy_id = oci_core_volume_backup_policy.backup.id
+}
+
+resource "oci_core_internet_gateway" "igw" {
+  compartment_id = oci_identity_compartment.identity.id
+  display_name   = "Internet Gateway"
+  vcn_id         = oci_core_vcn.main.id
 }
