@@ -167,3 +167,51 @@ Here is a quick reference for Step 5 of your request ("Where to add/modify keys"
 **4. User Password Hash**
 * **Location:** `main.tf` -> `users` -> `passwd`.
 * **Source:** Generated via Python command (included in README). This is required if you want to use `sudo` commands that ask for a password.
+
+
+
+## 🏹 Bonus: Capacity Hunter (`hunt.sh`)
+
+Oracle's "Always Free" ARM64 instances (Ampere A1) are in high demand and often run out of capacity in certain Availability Domains (ADs).
+
+Included in this repo is `hunt.sh`, a bash script designed to automate the provisioning process until capacity becomes available.
+
+### **How it Works**
+1.  It enters an infinite loop.
+2.  It cycles through Availability Domains 1, 2, and 3.
+3.  It automatically modifies `main.tf` to switch the target AD.
+4.  It runs `terraform apply -auto-approve`.
+    * **If it fails:** It waits 10 seconds and tries the next AD.
+    * **If it succeeds:** It logs the success, sends a notification (optional), and exits.
+
+### **Usage**
+
+1.  **Prepare the Script:**
+    Open `hunt.sh` and look for the Telegram notification line near the bottom:
+    ```bash
+    /home/vipulgoyal/telegram_bot/tg.sh "Instance Created Successfully "$VM_IP
+    ```
+    * **Option A (Remove it):** Delete this line if you don't have a custom Telegram script.
+    * **Option B (Update it):** Point it to your own notification script or webhook.
+
+2.  **Make Executable:**
+    ```bash
+    chmod +x hunt.sh
+    ```
+
+3.  **Run in Background:**
+    Since this script might run for hours or days, use `tmux` or `screen` to keep it running if you disconnect:
+    ```bash
+    # Start a new tmux session
+    tmux new -s oracle_hunt
+
+    # Run the hunter
+    ./hunt.sh
+    ```
+    *(To detach from tmux, press `Ctrl+B` then `D`)*.
+
+4.  **Monitor:**
+    The script logs all activity to `terraform_hunt.log`. You can watch it in real-time:
+    ```bash
+    tail -f terraform_hunt.log
+    ```
