@@ -130,6 +130,8 @@ ssh infra@10.200.0.2
 | **`private_key_path`** | The absolute path on your computer where you saved the `.pem` file from Oracle. |
 | **`compartment_ocid`** | Oracle Console -> Identity & Security -> Compartments -> Copy OCID (usually same as Tenancy for root). |
 | **`ssh_public_keys`** | Run `cat ~/.ssh/id_ed25519.pub` on your local machine. |
+TO generate these keys - 
+Run - ssh-keygen -y -f ~/.oci/(.pem file) > ~/.oci/<filename>.pub - this will generate the public key for you
 | **`wg_config` Keys** | Run `wg genkey \| tee privatekey \| wg pubkey > publickey` locally to generate a pair. Use the server private key in Terraform and the server public key in your client app. |
 
 📤 Outputs
